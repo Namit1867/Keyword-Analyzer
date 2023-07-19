@@ -201,7 +201,7 @@ def main():
     default_language_id = "" # language ID for English 1000 (English)
 
     # Client Instance
-    client = GoogleAdsClient.load_from_storage("/Users/namitjain/Documents/blog-backend-namit/python/google-ads.yaml")
+    client = GoogleAdsClient.load_from_storage("./google-ads.yaml")
 
     # user_api_key
     user_api_key = st.sidebar.text_input(
