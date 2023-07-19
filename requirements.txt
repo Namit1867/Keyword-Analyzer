@@ -1,0 +1,7 @@
+langchain==0.0.235
+streamlit==1.24.1
+pandas==2.0.3
+pybase64==1.2.3
+google-ads==21.2.0
+googlesearch-python==1.2.3
+openai==0.27.8
