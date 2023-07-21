@@ -186,13 +186,43 @@ def get_table_download_link(df):
     href = f'<a href="data:file/csv;base64,{b64}" download="keyword_analysis.csv">Download CSV file</a>'
     return href
 
+def prioritize_keywords(keywords_data,average_searches:int):
+    def get_past_searches(keyword):
+        searches_past_months = eval(keyword["Searches Past Months"])
+        return sum(searches_past_months) / len(searches_past_months) if searches_past_months else 0
+    
+    unique_keywords = set()
+    sorted_keywords = []
+    # Filter data where Average Searches are less than 100 and remove duplicates
+    for keyword in keywords_data:
+        if keyword["Average Searches"] >= average_searches and keyword["Keyword"] not in unique_keywords:
+            unique_keywords.add(keyword["Keyword"])
+            sorted_keywords.append(keyword)
+    # Sort by low bid (ascending order)
+    sorted_keywords = sorted(sorted_keywords, key=lambda x: x["Low Bid"])
+    # Evaluate average searches (descending order)
+    sorted_keywords = sorted(sorted_keywords, key=lambda x: x["Average Searches"], reverse=True)
+    # Consider competition level (LOW > MEDIUM > HIGH)
+    sorted_keywords = sorted(sorted_keywords, key=lambda x: ["LOW", "MEDIUM", "HIGH"].index(x["Competition Level"]))
+    # Check past months' searches (consider highest average search volume)
+    sorted_keywords = sorted(sorted_keywords, key=get_past_searches, reverse=True)
+    # Assess competition index (ascending order)
+    sorted_keywords = sorted(sorted_keywords, key=lambda x: x["Competition Index"])
+    # Consider bid range (choose keywords within your budget range)
+    # sorted_keywords = [kw for kw in sorted_keywords if kw["Low Bid"] <= max_bid]
+    # Consider brand/non-brand annotations (prioritize brand keywords)
+    # sorted_keywords = sorted(sorted_keywords, key=lambda x: "Brands" in x["List Annotations"], reverse=True)
+    # Evaluate relevance (add your relevance criteria here if available)
+    return sorted_keywords
+
+
 def main():
 
     # Customer Id
     default_customer_id = "8799968521"
 
-    # # Average Searches
-    # default_average_search = ""
+    # Average Searches
+    default_average_search = 100
 
     # Average Searches
     default_location_ids = []  # location ID for New York, NY (1023191)
@@ -209,12 +239,11 @@ def main():
     placeholder="Paste your openAI API key, sk-",
     type="password")
 
-    # # average_searches
-    # default_average_search = st.sidebar.text_input(
-    # key="avg_search",
-    # label="#### Average Searches 👇",
-    # placeholder="Enter Number of average searches",
-    # type="default")
+	# average_searches
+    default_average_search = st.sidebar.number_input(
+    key="avg_search",
+    label="#### Average Searches 👇",
+    value=default_average_search)
 
     # language
     default_language_id = st.sidebar.text_input(
@@ -245,8 +274,6 @@ def main():
     if st.button("Generate Keyword Ideas"):
         list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups)
 
-    # list_to_excel = list(filter(lambda sublist: is_greater_than_avg_search(sublist), list_to_excel))
-
     if len(list_to_excel) > 0:
         df = pd.DataFrame(
             list_to_excel,
@@ -260,20 +287,12 @@ def main():
 
     csv_file = st.sidebar.file_uploader("Upload a CSV file and Ask Query", type="csv")
 
-
-    # # Filter function
-    # def is_greater_than_avg_search(sublist):
-    #     avg_search = 0 
-    #     if default_average_search != "":
-    #         avg_search = int(default_average_search)
-    #     return int(sublist[1]) > avg_search
-
     if csv_file is not None:
-            excel_sheet = pd.read_csv(csv_file)
-            # column_names = excel_sheet.columns.values.tolist()
-            # list_to_excel = excel_sheet.values.tolist()
-            # list_to_excel = list(filter(lambda sublist: is_greater_than_avg_search(sublist), list_to_excel))
-            # excel_sheet = pd.DataFrame(list_to_excel,columns=column_names)
+
+        	excel_sheet = pd.read_csv(csv_file)
+            excel_sheet = excel_sheet.to_dict(orient="records")
+            priority_keyword_data = prioritize_keywords(excel_sheet,default_average_search)
+            excel_sheet = pd.DataFrame(priority_keyword_data)
             st.dataframe(excel_sheet)
 
             user_budget = None
