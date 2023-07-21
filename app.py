@@ -289,7 +289,7 @@ def main():
 
     if csv_file is not None:
 
-        	excel_sheet = pd.read_csv(csv_file)
+            excel_sheet = pd.read_csv(csv_file)
             excel_sheet = excel_sheet.to_dict(orient="records")
             priority_keyword_data = prioritize_keywords(excel_sheet,default_average_search)
             excel_sheet = pd.DataFrame(priority_keyword_data)
