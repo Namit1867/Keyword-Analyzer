@@ -16,7 +16,9 @@ import openai
 decimal_bid_conversion = 6
 wait_time_to_hit_google = 5
 # from langchain.prompts.prompt import PromptTemplate
-
+from prompts.keywordPlanner import keywordPlanner
+from prompts.keywordPlannerInput import keywordPlannerInput
+from langchain.prompts import PromptTemplate
 
 # [START generate_keyword_ideas]
 def get_keyword_data(
@@ -230,20 +232,23 @@ def main():
     # Average Searches
     default_language_id = "" # language ID for English 1000 (English)
 
+    # Number of ad Groups
+    num_ad_groups = 0
+
+    # List of Ad Groups Given By User
+    ad_groups = []
+
+    # Generated Keyword Data Sheet
+    list_to_excel = []
+
     # Client Instance
-    client = GoogleAdsClient.load_from_storage("./google-ads.yaml")
+    client = GoogleAdsClient.load_from_storage("./keyword-planner.yaml")
 
     # user_api_key
     user_api_key = st.sidebar.text_input(
     label="#### Your OpenAI API key 👇",
     placeholder="Paste your openAI API key, sk-",
     type="password")
-
-	# average_searches
-    default_average_search = st.sidebar.number_input(
-    key="avg_search",
-    label="#### Average Searches 👇",
-    value=default_average_search)
 
     # language
     default_language_id = st.sidebar.text_input(
@@ -253,25 +258,31 @@ def main():
     placeholder="Enter 1000 for English",
     type="default")
 
+    # Take number of locations 
     st.sidebar.write("#### Enter the number of locations 👇")
     num_of_location_ids = st.sidebar.number_input("Enter number of location ids", min_value=0,max_value=5, step=1, value=0)
     
+    # Take num_of_location_ids number of locations as input
     for i in range(num_of_location_ids):
         loc_id = st.sidebar.text_input(f"Location Id {i+1}",placeholder="Enter 1023191 for (New York)",help="#### Refer Here -> https://developers.google.com/google-ads/api/reference/data/geotargets",)
         default_location_ids.append(loc_id)
 
+    # Base Page Title
     st.title("Keyword Analysis")
-    st.write("Enter the number of ad groups:")
-    num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0)
 
-    ad_groups = []
+    # Input number of Ad Groups
+    if len(default_location_ids) is not 0:
+        st.write("Enter the number of ad groups:")
+        num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0)
+    
+    # Enter num_ad_groups number of ad group
     for i in range(num_ad_groups):
         ad_group = st.text_input(f"Ad Group {i+1}")
-        ad_groups.append(ad_group)
+        if len(ad_group) != 0:
+            ad_groups.append(ad_group)
 
-    list_to_excel = []
-
-    if st.button("Generate Keyword Ideas"):
+    # Generate Keyword file
+    if len(ad_groups) is not 0 and st.button("Generate Keyword Ideas"):
         list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups)
 
     if len(list_to_excel) > 0:
@@ -283,53 +294,26 @@ def main():
         st.dataframe(df)
         st.markdown(get_table_download_link(df), unsafe_allow_html=True)
 
-    st.sidebar.write("OR")
+    st.sidebar.write("#### OR")
 
-    csv_file = st.sidebar.file_uploader("Upload a CSV file and Ask Query", type="csv")
+    csv_file = st.sidebar.file_uploader("#### Upload a CSV file and Ask Query", type="csv")
 
     if csv_file is not None:
+            
+            # filter by average searches
+            default_average_search = st.number_input(
+            key="avg_search",
+            label="#### Filter by Average Searches 👇",
+            value=default_average_search)
 
+            # make excel sheet data
             excel_sheet = pd.read_csv(csv_file)
             excel_sheet = excel_sheet.to_dict(orient="records")
             priority_keyword_data = prioritize_keywords(excel_sheet,default_average_search)
-            excel_sheet = pd.DataFrame(priority_keyword_data)
-            st.dataframe(excel_sheet)
+            excel_sheet_dataframe = pd.DataFrame(priority_keyword_data)
+            st.dataframe(excel_sheet_dataframe)
 
-            user_budget = None
-
-            PROMPT1 = """
-            Title: Google Keyword Planner Analysis and Daily Budget Allocation
-
-            Description:
-            You are a digital marketer who wants to maximize the performance of your Google Ads campaign while staying within a given daily budget. You have a large Excel sheet containing keywords obtained from Google Keyword Planner, along with their estimated daily costs and relevant ad groups for those keywords. Your goal is to identify the best-performing keywords based on relevant metrics and allocate a daily budget to each keyword so that the overall expenditure does not exceed your specified daily budget.
-
-            Prompt:
-
-            You have been provided with an Excel sheet containing data from Google Keyword Planner. The sheet includes a list of keywords and their corresponding estimated daily costs.
-
-            Your task is to perform the following steps:
-
-            1. **Keyword Analysis**: Analyze the data and identify the most relevant and high-performing keywords. Consider factors such as search volume, competition, and relevance to your campaign objectives.
-
-            2. **Daily Budget Allocation**: After identifying the best keywords, allocate a daily budget to each keyword based on their estimated daily costs. Ensure that the total daily budget allocated to all keywords does not exceed the specified maximum daily budget.
-
-            3. **Optimization Strategy**: Propose an optimization strategy that includes bid adjustments, ad scheduling, and keyword grouping to improve the efficiency of your campaign and get the best possible return on investment (ROI) within the given budget constraints.
-
-            4. **Report**: Prepare a comprehensive report summarizing the chosen keywords, their respective daily budgets, and the proposed optimization strategy. Explain your reasoning behind selecting certain keywords and provide insights into how the daily budget allocation aligns with your campaign objectives.
-
-            To accomplish this task, you can use any programming language of your choice and relevant libraries for data analysis and budget allocation. Present your code, along with the final report, outlining your keyword selection and budget allocation rationale.
-
-            Good luck, and make sure to maximize the campaign's performance while staying within the budgetary limits!
-            """
-
-
-
-            st.write("#### Modify Prompts")
-            PROMPT1 = st.text_area(label="Modify 1st Prompt",value=PROMPT1,height=400)
-            
-
-            user_budget = st.text_input("Enter Daily Budget In USD value: ")
-
+            # Ask Ad Groups if not entered
             if len(ad_groups) == 0:
                 ad_groups = st.text_input("Enter Relevant Ad Groups: ")
             
@@ -337,13 +321,21 @@ def main():
                 result = ad_groups.split(",")
                 result = [s.strip() for s in result]
                 ad_groups = result
-                st.write(ad_groups)
 
+            # Prompt
+            keywordPlanningPromptTemplate = keywordPlanner(1)
 
-            PROMPT2 = f"excelSheet:${str(excel_sheet)} , user_budget:${user_budget}, ad_groups:${ad_groups}"
-                
+            st.write("#### Modify Prompts")
+            keywordPlanningPromptTemplate = st.text_area(label="Change Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+
+            excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
+
+            keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
+
+            st.text_area(label="Keyword Sheet Data",value=keywordPlannerInputTemplate,height=400,disabled=True)
+
             if st.button("Submit"):
-                if (ad_groups is not None and user_budget is not None ) and (ad_groups != "" or len(ad_groups) > 0):
+                if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
                     with st.spinner(text="In progress..."):
                         openai.api_key = user_api_key
                         response = openai.ChatCompletion.create(
@@ -351,27 +343,17 @@ def main():
                             messages=[
                                 {
                                 "role": "system",
-                                "content": PROMPT1
+                                "content": keywordPlanningPromptTemplate
                                 },
                                 {
                                 "role": "user",
-                                "content": PROMPT2
+                                "content": keywordPlannerInputTemplate
                                 },
                             ],
                             temperature=0,
                             
                             )
                         st.write(response.choices[0].message.content)
-        
-        # agent = create_csv_agent(
-        #     ChatOpenAI(temperature=0,openai_api_key=user_api_key,model="gpt-3.5-turbo-16k-0613"), tmp_file_path, verbose=True)
-
-
-
-        # if user_question is not None and user_question != "":
-        #     with st.spinner(text="In progress..."):
-
-        #         st.write(agent.run(user_question))
 
 
 if __name__ == "__main__":
