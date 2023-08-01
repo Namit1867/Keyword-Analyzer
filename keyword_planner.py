@@ -1,24 +1,19 @@
-# from langchain.agents import create_csv_agent
-from langchain.llms import OpenAI
+
+
 import time
 import math
-import streamlit as st
-import pandas as pd
-import pybase64
-from decimal import Decimal
-from google.ads.googleads.client import GoogleAdsClient
-# from google.ads.googleads.errors import GoogleAdsException
-from googlesearch import search
-# import tempfile
-# from langchain.chat_models import ChatOpenAI
 import openai
+import pybase64
+import pandas as pd
+import streamlit as st
+from decimal import Decimal
+from googlesearch import search
+from prompts.keywordPlanner import keywordPlanner
+from google.ads.googleads.client import GoogleAdsClient
+from prompts.keywordPlannerInput import keywordPlannerInput
 
 decimal_bid_conversion = 6
 wait_time_to_hit_google = 5
-# from langchain.prompts.prompt import PromptTemplate
-from prompts.keywordPlanner import keywordPlanner
-from prompts.keywordPlannerInput import keywordPlannerInput
-from langchain.prompts import PromptTemplate
 
 # [START generate_keyword_ideas]
 def get_keyword_data(
@@ -134,7 +129,6 @@ def generate_keyword_ideas(client,customer_id,location_ids, language_id, ad_grou
         time.sleep(wait_time_to_hit_google)
         for x in range(len(content)):
             list_keywords.append(content[x])
-        st.write(link, "done with ", len(list_keywords))
 
     list_to_excel = []
     for x in range(len(list_keywords)):
@@ -244,34 +238,43 @@ def main():
     # Client Instance
     client = GoogleAdsClient.load_from_storage("./keyword-planner.yaml")
 
-    # user_api_key
-    user_api_key = st.sidebar.text_input(
-    label="#### Your OpenAI API key 👇",
-    placeholder="Paste your openAI API key, sk-",
-    type="password")
+    language_excel_sheet = pd.read_csv("./utilities/language.csv")
+    language_excel_dict = language_excel_sheet.to_dict(orient="records")
+    language_names = tuple(item['Language name'] + " (" + (item['Language code']) + ")"  for item in language_excel_dict)
 
-    # language
-    default_language_id = st.sidebar.text_input(
+    location_excel_sheet = pd.read_csv("./utilities/location.csv")
+    location_excel_dict = location_excel_sheet.to_dict(orient="records")
+    location_names = tuple(item['Canonical Name'] for item in location_excel_dict)
+
+    selected_language = st.sidebar.selectbox(
     key="lang_id",
-    label="#### Language Id 👇",
+    label='#### Language 👇',
     help="#### Refer Here -> https://developers.google.com/google-ads/api/data/codes-formats#languages",
-    placeholder="Enter 1000 for English",
-    type="default")
+    options=language_names,
+    index=10)
+
+    default_language_id = language_excel_dict[language_names.index(selected_language)]['Criterion ID']
+
 
     # Take number of locations 
     st.sidebar.write("#### Enter the number of locations 👇")
-    num_of_location_ids = st.sidebar.number_input("Enter number of location ids", min_value=0,max_value=5, step=1, value=0)
+    num_of_location_ids = st.sidebar.number_input("Enter number of location", min_value=0,max_value=5, step=1, value=0)
     
     # Take num_of_location_ids number of locations as input
     for i in range(num_of_location_ids):
-        loc_id = st.sidebar.text_input(f"Location Id {i+1}",placeholder="Enter 1023191 for (New York)",help="#### Refer Here -> https://developers.google.com/google-ads/api/reference/data/geotargets",)
-        default_location_ids.append(loc_id)
+        selected_location = st.sidebar.selectbox(
+        key=f"location_id {i+1}",
+        label=f"Location {i+1}",
+        help="#### Refer Here -> https://developers.google.com/google-ads/api/reference/data/geotargets",
+        options=location_names,
+        index=20867)
+        default_location_ids.append(location_excel_dict[location_names.index(selected_location)]['Criteria ID'])
 
     # Base Page Title
     st.title("Keyword Analysis")
 
     # Input number of Ad Groups
-    if len(default_location_ids) is not 0:
+    if len(default_location_ids) != 0:
         st.write("Enter the number of ad groups:")
         num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0)
     
@@ -282,7 +285,7 @@ def main():
             ad_groups.append(ad_group)
 
     # Generate Keyword file
-    if len(ad_groups) is not 0 and st.button("Generate Keyword Ideas"):
+    if len(ad_groups) != 0 and st.button("Generate Keyword Ideas"):
         list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups)
 
     if len(list_to_excel) > 0:
@@ -300,6 +303,12 @@ def main():
 
     if csv_file is not None:
             
+            # user_api_key
+            user_api_key = st.text_input(
+            label="#### Your OpenAI API key 👇",
+            placeholder="Paste your openAI API key, sk-",
+            type="password")
+                    
             # filter by average searches
             default_average_search = st.number_input(
             key="avg_search",
@@ -315,7 +324,7 @@ def main():
 
             # Ask Ad Groups if not entered
             if len(ad_groups) == 0:
-                ad_groups = st.text_input("Enter Relevant Ad Groups: ")
+                ad_groups = st.text_input("#### Enter Relevant Ad Groups Separated By Comma: ")
             
             if(type(ad_groups) == str):
                 result = ad_groups.split(",")
@@ -325,14 +334,11 @@ def main():
             # Prompt
             keywordPlanningPromptTemplate = keywordPlanner(1)
 
-            st.write("#### Modify Prompts")
-            keywordPlanningPromptTemplate = st.text_area(label="Change Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+            keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
 
             excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
 
             keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
-
-            st.text_area(label="Keyword Sheet Data",value=keywordPlannerInputTemplate,height=400,disabled=True)
 
             if st.button("Submit"):
                 if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
