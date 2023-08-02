@@ -244,7 +244,7 @@ def main():
 
     location_excel_sheet = pd.read_csv("./utilities/location.csv")
     location_excel_dict = location_excel_sheet.to_dict(orient="records")
-    location_names = tuple(item['Canonical Name'] for item in location_excel_dict)
+    location_names = tuple(item['Canonical Name'] + " (" + item['Target Type'] + ")" for item in location_excel_dict)
 
     selected_language = st.sidebar.selectbox(
     key="lang_id",
@@ -303,18 +303,12 @@ def main():
 
     if csv_file is not None:
             
-            # user_api_key
-            user_api_key = st.text_input(
-            label="#### Your OpenAI API key 👇",
-            placeholder="Paste your openAI API key, sk-",
-            type="password")
-                    
             # filter by average searches
             default_average_search = st.number_input(
             key="avg_search",
             label="#### Filter by Average Searches 👇",
             value=default_average_search)
-
+            
             # make excel sheet data
             excel_sheet = pd.read_csv(csv_file)
             excel_sheet = excel_sheet.to_dict(orient="records")
@@ -322,44 +316,80 @@ def main():
             excel_sheet_dataframe = pd.DataFrame(priority_keyword_data)
             st.dataframe(excel_sheet_dataframe)
 
-            # Ask Ad Groups if not entered
-            if len(ad_groups) == 0:
-                ad_groups = st.text_input("#### Enter Relevant Ad Groups Separated By Comma: ")
-            
-            if(type(ad_groups) == str):
-                result = ad_groups.split(",")
-                result = [s.strip() for s in result]
-                ad_groups = result
+            st.write("#### Search Comparison on basis of Competition Index 👇")
+            chart = {
+                "mark": "point",
+                "encoding": {
+                    "x": {
+                        "field": "Competition Index",
+                        "type": "quantitative",
+                    },
+                    "y": {
+                        "field": "Average Searches",
+                        "type": "quantitative",
+                    },
+                    "color": {"field": "Competition Level", "type": "nominal"},
+                    "shape": {"field": "Competition Level", "type": "nominal"},
+                    "tooltip": [
+                        {"field": "Keyword", "type": "nominal", "title":"Keyword"},
+                        {"field": "Competition Index", "type": "quantitative"},
+                        {"field": "Average Searches", "type": "quantitative"},
+                        {"field": "Low Bid", "type": "quantitative"},
+                        {"field": "High Bid", "type": "quantitative"},
+                        # Add more tooltip fields if needed
+                    ]
+                },
+            }
 
-            # Prompt
-            keywordPlanningPromptTemplate = keywordPlanner(1)
+            st.vega_lite_chart(
+                excel_sheet_dataframe, chart, theme="streamlit", use_container_width=True
+            )
 
-            keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+            # user_api_key
+            user_api_key = st.text_input(
+            label="#### Your OpenAI API key 👇",
+            placeholder="Paste your openAI API key, sk-",
+            type="password")
 
-            excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
+            if user_api_key != "":
+                # Ask Ad Groups if not entered
+                if len(ad_groups) == 0:
+                    ad_groups = st.text_input("#### Enter Relevant Ad Groups Separated By Comma: ")
+                
+                if(type(ad_groups) == str):
+                    result = ad_groups.split(",")
+                    result = [s.strip() for s in result]
+                    ad_groups = result
 
-            keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
+                # Prompt
+                keywordPlanningPromptTemplate = keywordPlanner(1)
 
-            if st.button("Submit"):
-                if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
-                    with st.spinner(text="In progress..."):
-                        openai.api_key = user_api_key
-                        response = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo-16k",
-                            messages=[
-                                {
-                                "role": "system",
-                                "content": keywordPlanningPromptTemplate
-                                },
-                                {
-                                "role": "user",
-                                "content": keywordPlannerInputTemplate
-                                },
-                            ],
-                            temperature=0,
-                            
-                            )
-                        st.write(response.choices[0].message.content)
+                keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+
+                excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
+
+                keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
+
+                if st.button("Submit"):
+                    if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
+                        with st.spinner(text="In progress..."):
+                            openai.api_key = user_api_key
+                            response = openai.ChatCompletion.create(
+                                model="gpt-3.5-turbo-16k",
+                                messages=[
+                                    {
+                                    "role": "system",
+                                    "content": keywordPlanningPromptTemplate
+                                    },
+                                    {
+                                    "role": "user",
+                                    "content": keywordPlannerInputTemplate
+                                    },
+                                ],
+                                temperature=0,
+                                
+                                )
+                            st.write(response.choices[0].message.content)
 
 
 if __name__ == "__main__":
