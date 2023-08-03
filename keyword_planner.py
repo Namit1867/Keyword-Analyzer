@@ -250,7 +250,7 @@ def main():
         st.session_state.show_sidebar = False
 
     if option == "Generate ad group ideas using AI":
-        st.session_state.show_sidebar = False
+
         # user_api_key
         user_api_key = st.text_input(
         label="#### Your OpenAI API key 👇",
