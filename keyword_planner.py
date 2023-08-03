@@ -176,10 +176,33 @@ def generate_keyword_ideas(client,customer_id,location_ids, language_id, ad_grou
 
     return list_to_excel
 
-def get_table_download_link(df):
-    csv = df.to_csv(index=False)
-    b64 = pybase64.b64encode(csv.encode()).decode()  # B64 encoding
-    href = f'<a href="data:file/csv;base64,{b64}" download="keyword_analysis.csv">Download CSV file</a>'
+def get_table_download_link(df, filename='download', file_format='csv'):
+    """
+    Generate a download link for a Pandas DataFrame.
+
+    Parameters:
+        df (pd.DataFrame): The DataFrame to be downloaded.
+        filename (str): The name of the downloaded file (without extension).
+                        Default is 'download'.
+        file_format (str): The file format for download. Supported formats are 'csv', 'xlsx'.
+                           Default is 'csv'.
+
+    Returns:
+        str: A string representing an HTML anchor tag with a link to download the file.
+    """
+    valid_formats = ['csv', 'xlsx']
+    if file_format not in valid_formats:
+        raise ValueError(f"Invalid file format. Supported formats are: {', '.join(valid_formats)}")
+
+    if file_format == 'csv':
+        data = df.to_csv(index=False)
+        extension = 'csv'
+    elif file_format == 'xlsx':
+        data = df.to_excel(index=False)
+        extension = 'xlsx'
+
+    b64 = pybase64.b64encode(data.encode()).decode()  # B64 encoding
+    href = f'<a href="data:file/{file_format};base64,{b64}" download="{filename}.{extension}">**Download {extension.upper()} file**</a>'
     return href
 
 def prioritize_keywords(keywords_data,average_searches:int):
@@ -211,223 +234,229 @@ def prioritize_keywords(keywords_data,average_searches:int):
     # Evaluate relevance (add your relevance criteria here if available)
     return sorted_keywords
 
-
 def main():
 
-    # Customer Id
-    default_customer_id = "8799968521"
-
-    # Average Searches
-    default_average_search = 100
-
-    # Average Searches
-    default_location_ids = []  # location ID for New York, NY (1023191)
-
-    # Average Searches
-    default_language_id = "" # language ID for English 1000 (English)
-
-    # Number of ad Groups
-    num_ad_groups = 0
-
-    # List of Ad Groups Given By User
-    ad_groups = []
-
-    # Generated Keyword Data Sheet
-    list_to_excel = []
-
-    # Client Instance
-    client = GoogleAdsClient.load_from_storage("./keyword-planner.yaml")
-
-    language_excel_sheet = pd.read_csv("./utilities/language.csv")
-    language_excel_dict = language_excel_sheet.to_dict(orient="records")
-    language_names = tuple(item['Language name'] + " (" + (item['Language code']) + ")"  for item in language_excel_dict)
-
-    location_excel_sheet = pd.read_csv("./utilities/location.csv")
-    location_excel_dict = location_excel_sheet.to_dict(orient="records")
-    location_names = tuple(item['Canonical Name'] + " (" + item['Target Type'] + ")" for item in location_excel_dict)
-
-    selected_language = st.sidebar.selectbox(
-    key="lang_id",
-    label='#### Language 👇',
-    help="#### Refer Here -> https://developers.google.com/google-ads/api/data/codes-formats#languages",
-    options=language_names,
-    index=10)
-
-    default_language_id = language_excel_dict[language_names.index(selected_language)]['Criterion ID']
-
-
-    # Take number of locations 
-    st.sidebar.write("#### Enter the number of locations 👇")
-    num_of_location_ids = st.sidebar.number_input("Enter number of location", min_value=0,max_value=5, step=1, value=0)
-    
-    # Take num_of_location_ids number of locations as input
-    for i in range(num_of_location_ids):
-        selected_location = st.sidebar.selectbox(
-        key=f"location_id {i+1}",
-        label=f"Location {i+1}",
-        help="#### Refer Here -> https://developers.google.com/google-ads/api/reference/data/geotargets",
-        options=location_names,
-        index=20867)
-        default_location_ids.append(location_excel_dict[location_names.index(selected_location)]['Criteria ID'])
-
-    # Base Page Title
+        # Step 1: Initial UI - Choose between AI-generated ad word ideas or user-provided ad groups
     st.title("Keyword Analysis")
+    option = st.radio("#### Select an option:", ("Generate ad group ideas using AI", "Use your own ad group ideas"))
 
-    # Input number of Ad Groups
-    if len(default_location_ids) != 0:
-        st.write("Enter the number of ad groups:")
-        num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0)
+    user_api_key = ""
+
+    # Initialize session state variables
+    if 'ad_group_ai_result' not in st.session_state:
+        st.session_state.ad_group_ai_result = ""
+
+    if 'show_sidebar' not in st.session_state:
+        st.session_state.show_sidebar = False
+
+    if option == "Generate ad group ideas using AI":
+        
+        # user_api_key
+        user_api_key = st.text_input(
+        label="#### Your OpenAI API key 👇",
+        placeholder="Paste your openAI API key, sk-",
+        type="password")
+        
+        ai_prompt = st.text_area("#### Enter AI prompt to generate ad group ideas:")
+        if st.button("Submit AI Prompt"):
+            # Call the AI API with the provided prompt and display the result
+            if ai_prompt.strip() != "":
+                openai.api_key = user_api_key
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo-16k",
+                    messages=[
+                        {
+                        "role": "user",
+                        "content": ai_prompt
+                        },
+                    ],
+                    temperature=0,
+                    
+                    )
+                ai_result = response.choices[0].message.content  # call the AI API
+                st.session_state.ad_group_ai_result = ai_result
+                st.session_state.show_sidebar = True
     
-    # Enter num_ad_groups number of ad group
-    for i in range(num_ad_groups):
-        ad_group = st.text_input(f"Ad Group {i+1}")
-        if len(ad_group) != 0:
-            ad_groups.append(ad_group)
+    elif option == "Use your own ad group ideas":
+        st.session_state.show_sidebar = True
 
-    # Generate Keyword file
-    if len(ad_groups) != 0 and st.button("Generate Keyword Ideas"):
-        list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups)
 
-    if len(list_to_excel) > 0:
-        df = pd.DataFrame(
-            list_to_excel,
-            columns=["Keyword", "Average Searches", "Competition Level", "Competition Index",
-                    "Low Bid", "High Bid", "Searches Past Months", "Past Months", "List Annotations"]
-        )
-        st.dataframe(df)
-        st.markdown(get_table_download_link(df), unsafe_allow_html=True)
+    if st.session_state.show_sidebar:
 
-    st.sidebar.write("#### OR")
+        if st.session_state.ad_group_ai_result != "":
+            st.write(st.session_state.ad_group_ai_result)
 
-    csv_file = st.sidebar.file_uploader("#### Upload a CSV file and Ask Query", type="csv")
+        # Customer Id
+        default_customer_id = "8799968521"
 
-    if csv_file is not None:
-            
-            # filter by average searches
-            default_average_search = st.number_input(
-            key="avg_search",
-            label="#### Filter by Average Searches 👇",
-            value=default_average_search)
-            
-            # make excel sheet data
-            excel_sheet = pd.read_csv(csv_file)
-            excel_sheet = excel_sheet.to_dict(orient="records")
-            priority_keyword_data = prioritize_keywords(excel_sheet,default_average_search)
-            excel_sheet_dataframe = pd.DataFrame(priority_keyword_data)
-            st.dataframe(excel_sheet_dataframe)
+        # Average Searches
+        default_average_search = 100
 
-            st.write("#### Search Comparison on basis of Competition Index 👇")
-            chart = {
-                "mark": "point",
-                "encoding": {
-                    "x": {
-                        "field": "Competition Index",
-                        "type": "quantitative",
-                    },
-                    "y": {
-                        "field": "Average Searches",
-                        "type": "quantitative",
-                    },
-                    "color": {"field": "Competition Level", "type": "nominal"},
-                    "shape": {"field": "Competition Level", "type": "nominal"},
-                    "tooltip": [
-                        {"field": "Keyword", "type": "nominal", "title":"Keyword"},
-                        {"field": "Competition Index", "type": "quantitative"},
-                        {"field": "Average Searches", "type": "quantitative"},
-                        {"field": "Low Bid", "type": "quantitative"},
-                        {"field": "High Bid", "type": "quantitative"},
-                        # Add more tooltip fields if needed
-                    ]
-                },
-            }
+        # Average Searches
+        default_location_ids = []  # location ID for New York, NY (1023191)
 
-            st.vega_lite_chart(
-                excel_sheet_dataframe, chart, theme="streamlit", use_container_width=True
+        # Average Searches
+        default_language_id = "" # language ID for English 1000 (English)
+
+        # Number of ad Groups
+        num_ad_groups = 0
+
+        # List of Ad Groups Given By User
+        ad_groups = []
+
+        # Generated Keyword Data Sheet
+        list_to_excel = []
+
+        # Client Instance
+        client = GoogleAdsClient.load_from_storage("./keyword-planner.yaml")
+
+
+        # Language Selection Logic
+        language_excel_sheet = pd.read_csv("./utilities/language.csv")
+        language_excel_dict = language_excel_sheet.to_dict(orient="records")
+        language_names = tuple(item['Language name'] + " (" + (item['Language code']) + ")"  for item in language_excel_dict)
+
+        selected_language = st.sidebar.selectbox(
+        key="lang_id",
+        label='#### Language 👇',
+        help="#### Refer Here -> https://developers.google.com/google-ads/api/data/codes-formats#languages",
+        options=language_names,
+        index=10)
+
+        default_language_id = language_excel_dict[language_names.index(selected_language)]['Criterion ID']
+
+        # Location Selection Logic
+        location_excel_sheet = pd.read_csv("./utilities/location.csv")
+        location_excel_dict = location_excel_sheet.to_dict(orient="records")
+        location_names = tuple(item['Canonical Name'] + " (" + item['Target Type'] + ")" for item in location_excel_dict)
+
+        # Take number of locations 
+        st.sidebar.write("#### Enter the number of locations 👇")
+        num_of_location_ids = st.sidebar.number_input("Enter number of location", min_value=0,max_value=5, step=1, value=0)
+
+        # Take num_of_location_ids number of locations as input
+        for i in range(num_of_location_ids):
+            selected_location = st.sidebar.selectbox(
+            key=f"location_id {i+1}",
+            label=f"Location {i+1}",
+            help="#### Refer Here -> https://developers.google.com/google-ads/api/reference/data/geotargets",
+            options=location_names,
+            index=20867)
+            default_location_ids.append(location_excel_dict[location_names.index(selected_location)]['Criteria ID'])
+
+
+        # Input number of Ad Groups
+        if len(default_location_ids) != 0:
+            st.write("#### Enter the number of ad groups:")
+            num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0)
+        
+        # Enter num_ad_groups number of ad group
+        for i in range(num_ad_groups):
+            ad_group = st.text_input(f"Ad Group {i+1}")
+            if len(ad_group) != 0:
+                ad_groups.append(ad_group)
+
+        # Generate Keyword file in list format
+        if len(ad_groups) != 0 and st.button("Generate Keyword Ideas"):
+            list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups)
+
+        # Generate excel sheet dataframe
+        if len(list_to_excel) > 0:
+            df = pd.DataFrame(
+                list_to_excel,
+                columns=["Keyword", "Average Searches", "Competition Level", "Competition Index",
+                        "Low Bid", "High Bid", "Searches Past Months", "Past Months", "List Annotations"]
             )
+            st.dataframe(df)
+            st.markdown(get_table_download_link(df), unsafe_allow_html=True)
 
-            # user_api_key
-            user_api_key = st.text_input(
-            label="#### Your OpenAI API key 👇",
-            placeholder="Paste your openAI API key, sk-",
-            type="password")
+        csv_file = st.sidebar.file_uploader("#### Upload CSV file and Ask Query", type="csv")
 
-            if user_api_key != "":
-                # Ask Ad Groups if not entered
-                if len(ad_groups) == 0:
-                    ad_groups = st.text_input("#### Enter Relevant Ad Groups Separated By Comma: ")
+        if csv_file is not None:
                 
-                if(type(ad_groups) == str):
-                    result = ad_groups.split(",")
-                    result = [s.strip() for s in result]
-                    ad_groups = result
+                # filter by average searches
+                default_average_search = st.number_input(
+                key="avg_search",
+                label="#### Filter by Average Searches 👇",
+                value=default_average_search)
+                
+                # make excel sheet data
+                excel_sheet = pd.read_csv(csv_file)
+                excel_sheet = excel_sheet.to_dict(orient="records")
+                priority_keyword_data = prioritize_keywords(excel_sheet,default_average_search)
+                excel_sheet_dataframe = pd.DataFrame(priority_keyword_data)
+                st.dataframe(excel_sheet_dataframe)
 
-                # Prompt
-                keywordPlanningPromptTemplate = keywordPlanner(1)
+                st.write("#### Search Comparison on basis of Competition Index 👇")
+                chart = {
+                    "mark": "point",
+                    "encoding": {
+                        "x": {
+                            "field": "Competition Index",
+                            "type": "quantitative",
+                        },
+                        "y": {
+                            "field": "Average Searches",
+                            "type": "quantitative",
+                        },
+                        "color": {"field": "Competition Level", "type": "nominal"},
+                        "shape": {"field": "Competition Level", "type": "nominal"},
+                        "tooltip": [
+                            {"field": "Keyword", "type": "nominal", "title":"Keyword"},
+                            {"field": "Competition Index", "type": "quantitative"},
+                            {"field": "Average Searches", "type": "quantitative"},
+                            {"field": "Low Bid", "type": "quantitative"},
+                            {"field": "High Bid", "type": "quantitative"},
+                            # Add more tooltip fields if needed
+                        ]
+                    },
+                }
 
-                keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+                st.vega_lite_chart(
+                    excel_sheet_dataframe, chart, theme="streamlit", use_container_width=True
+                )
 
-                excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
+                # user_api_key
+                if user_api_key == "":
+                    user_api_key = st.text_input(
+                    label="#### Your OpenAI API key 👇",
+                    placeholder="Paste your openAI API key, sk-",
+                    type="password")
 
-                keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
+                if user_api_key != "":
 
-                if st.button("Submit"):
-                    if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
-                        with st.spinner(text="In progress..."):
-                            openai.api_key = user_api_key
-                            response = openai.ChatCompletion.create(
-                                model="gpt-3.5-turbo-16k",
-                                messages=[
-                                    {
-                                    "role": "system",
-                                    "content": keywordPlanningPromptTemplate
-                                    },
-                                    {
-                                    "role": "user",
-                                    "content": keywordPlannerInputTemplate
-                                    },
-                                ],
-                                temperature=0,
-                                
-                                )
-                            st.write(response.choices[0].message.content)
+                    # Prompt
+                    keywordPlanningPromptTemplate = keywordPlanner(1)
+
+                    keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+
+                    excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
+
+                    keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
+
+                    if st.button("Submit"):
+                        if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
+                            with st.spinner(text="In progress..."):
+                                openai.api_key = user_api_key
+                                response = openai.ChatCompletion.create(
+                                    model="gpt-3.5-turbo-16k",
+                                    messages=[
+                                        {
+                                        "role": "system",
+                                        "content": keywordPlanningPromptTemplate
+                                        },
+                                        {
+                                        "role": "user",
+                                        "content": keywordPlannerInputTemplate
+                                        },
+                                    ],
+                                    temperature=0,
+                                    
+                                    )
+                                st.write(response.choices[0].message.content)
 
 
+
+# Call the main function when the script is executed
 if __name__ == "__main__":
     main()
-
-
-
- ## FAISS code
-    # if csv_file:
-    #     #use tempfile because CSVLoader only accepts a file_path
-    #     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-    #         tmp_file.write(csv_file.getvalue())
-    #         tmp_file_path = tmp_file.name
-
-    #     loader = CSVLoader(file_path=tmp_file_path, encoding="utf-8", csv_args={
-    #                 'delimiter': ','})
-    #     data = loader.load()
-    
-    #     embeddings = OpenAIEmbeddings(openai_api_key=user_api_key)
-    #     vectorstore = FAISS.from_documents(data, embeddings)
-    #     chain = ConversationalRetrievalChain.from_llm(
-    #     llm = ChatOpenAI(temperature=0.0,model_name='gpt-3.5-turbo',openai_api_key=user_api_key),
-    #     retriever=vectorstore.as_retriever(),
-    #     verbose=True, return_source_documents=True, max_tokens_limit=4097,
-    #     combine_docs_chain_kwargs={'prompt': QA_PROMPT})
-
-    #     user_question = st.text_input("Ask a question about your CSV: ")
-
-    #     if user_question is not None and user_question != "":
-    #         with st.spinner(text="In progress..."):
-    #             docs = vectorstore.similarity_search(user_question)
-    #             st.write(chain.run(input_documents=docs, question=user_question))
-
-    #             chain_input = {"question": user_question, "chat_history": st.session_state["history"]}
-    #             result = chain(chain_input)
-
-    #     st.session_state["history"].append((user_question, result["answer"]))
-
-    
-    # server_url = "http://localhost:3000"  # Replace with remote host if you are running on a remote server
-    # llm = OpenLLM(server_url=server_url)
