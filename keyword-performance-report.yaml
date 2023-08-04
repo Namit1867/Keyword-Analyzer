@@ -1,0 +1,18 @@
+# Shruti Production Credentials
+
+# developer_token: SqJ6-7LxN22cVFApn7E-AA #MCC ACCOUNT
+# client_id: 234495988754-3titlcclldmfgcivrq22m4sglf3bqqni.apps.googleusercontent.com #MCC ACCOUNT
+# client_secret: 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  #MCC ACCOUNT
+# refresh_token: 1//0gjNO8V9RJZx0CgYIARAAGBASNwF-L9Ir9u2-G1Hg1MUiK9tMD6jIpzDez2AzF9Hb3f6pVeUUxaBbscpQ1d4Kee42394r_QoEFFU
+# use_proto_plus: false
+# # login_customer_id: "9846820198" #MCC ACCOUNT
+
+
+# Namit Rapid account credentials
+
+developer_token: zW6ymssLzFHLf7yvRlB3-w
+client_id: 150317104296-43b76hh7pu3fqllcp9kl77jinj87bbts.apps.googleusercontent.com
+client_secret: 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
+refresh_token: 1//0gZC9XPgyziECCgYIARAAGBASNwF-L9IrlXjXSdrviBrCY2w7nXNpGUjLBFFuNJa99ezZ6Cw0r9d638anDJYlLYyWWaNv2fs3F1U
+use_proto_plus: false
+login_customer_id: "2421311290" # TEST Manager Account Id
