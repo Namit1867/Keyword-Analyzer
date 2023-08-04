@@ -11,6 +11,7 @@ from googlesearch import search
 from prompts.keywordPlanner import keywordPlanner
 from google.ads.googleads.client import GoogleAdsClient
 from prompts.keywordPlannerInput import keywordPlannerInput
+from keyword_performance_report import generate_performance_report
 
 decimal_bid_conversion = 6
 wait_time_to_hit_google = 5
@@ -236,9 +237,9 @@ def prioritize_keywords(keywords_data,average_searches:int):
 
 def main():
 
-        # Step 1: Initial UI - Choose between AI-generated ad word ideas or user-provided ad groups
+    # Step 1: Initial UI - Choose between AI-generated ad word ideas or user-provided ad groups
     st.title("Keyword Analysis")
-    option = st.radio("#### Select an option:", ("Generate ad group ideas using AI", "Use your own ad group ideas"))
+    option = st.radio("#### Select an option:", ("Generate ad group ideas using AI", "Use your own ad group ideas", "Generate Keyword Report"))
 
     user_api_key = ""
 
@@ -250,7 +251,6 @@ def main():
         st.session_state.show_sidebar = False
 
     if option == "Generate ad group ideas using AI":
-
         # user_api_key
         user_api_key = st.text_input(
         label="#### Your OpenAI API key 👇",
@@ -270,7 +270,7 @@ def main():
                         "content": ai_prompt
                         },
                     ],
-                    temperature=0,
+                    temperature=0.5,
                     
                     )
                 ai_result = response.choices[0].message.content  # call the AI API
@@ -279,6 +279,8 @@ def main():
     
     elif option == "Use your own ad group ideas":
         st.session_state.show_sidebar = True
+    elif option == "Generate Keyword Report":
+        generate_performance_report()
 
 
     if st.session_state.show_sidebar:
@@ -450,7 +452,7 @@ def main():
                                         "content": keywordPlannerInputTemplate
                                         },
                                     ],
-                                    temperature=0,
+                                    temperature=0.5,
                                     
                                     )
                                 st.write(response.choices[0].message.content)
