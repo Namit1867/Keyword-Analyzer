@@ -1,4 +1,4 @@
-
+mp
 
 import time
 import math
@@ -270,7 +270,7 @@ def main():
                         "content": ai_prompt
                         },
                     ],
-                    temperature=0.5,
+                    temperature=0.1,
                     
                     )
                 ai_result = response.choices[0].message.content  # call the AI API
@@ -452,7 +452,7 @@ def main():
                                         "content": keywordPlannerInputTemplate
                                         },
                                     ],
-                                    temperature=0.5,
+                                    temperature=0.1,
                                     
                                     )
                                 st.write(response.choices[0].message.content)
