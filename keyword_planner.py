@@ -150,7 +150,7 @@ def generate_keyword_ideas(client,customer_id,location_ids, language_id, ad_grou
         system_ai_prompt = """
             You will be provided with an array of ad groups, and your task is to predict the 10 most suitable keywords per ad group for creating an effective ad campaign.
             
-            Retun output as a dictionary given below
+            Return output as a dictionary given below
             [   
                 {     
                     "keywords": ["Keyword 1", "Keyword 2", ..., "Keyword 10"]
@@ -163,25 +163,29 @@ def generate_keyword_ideas(client,customer_id,location_ids, language_id, ad_grou
         assistant_ai_prompt = "To predict the 10 most suitable keywords per ad group, we need some information about the ad groups and their intended goals. Are there any specific themes or topics for each ad group? Additionally, do you have any criteria or preferences for the keywords, such as target audience, location, or industry?"
         user_ai_prompt = f"{ad_groups}"
         openai.api_key = st.session_state.user_api_key
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                "role": "system",
-                "content": system_ai_prompt
-                },
-                {
-                "role": "assistant",
-                "content": assistant_ai_prompt
-                },
-                {
-                "role": "user",
-                "content": user_ai_prompt
-                },
-            ],
-            temperature=1,
-            )
-        st.session_state.ai_result = response.choices[0].message.content  # call the AI API
+
+        temperature = st.slider('**Choose Temperature**', 0.0, 1.0, 0.1, 0.1,key="slider1")
+
+        if st.button("Generate Sample Keyword Using Above Ad Groups:"):
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                    "role": "system",
+                    "content": system_ai_prompt
+                    },
+                    {
+                    "role": "assistant",
+                    "content": assistant_ai_prompt
+                    },
+                    {
+                    "role": "user",
+                    "content": user_ai_prompt
+                    },
+                ],
+                temperature=int(temperature),
+                )
+            st.session_state.ai_result = response.choices[0].message.content  # call the AI API
 
         
     if st.session_state.ai_result != "":
@@ -353,6 +357,8 @@ def main():
         # Take prompt to generate ad group ideas
         ai_prompt = st.text_area("#### Enter AI prompt to generate ad group ideas:",key="key2")
 
+        temperature = st.slider('**Choose Temperature**', 0.0, 1.0, 0.1, 0.1,key="slider2")
+
         # button to submit given prompt
         if len(ai_prompt) != 0 and st.button("Submit AI Prompt"):
             
@@ -367,7 +373,7 @@ def main():
                         "content": ai_prompt
                         },
                     ],
-                    temperature=1,
+                    temperature=int(temperature),
                     
                     )
                 ai_result = response.choices[0].message.content  # call the AI API
@@ -552,6 +558,8 @@ def main():
 
                     keywordPlannerInputTemplate = keywordPlannerInput(excel_sheet_dataframe_list,ad_groups)
 
+                    temperature = st.slider('**Choose Temperature**', 0.0, 1.0, 0.1, 0.1,key="slider3")
+
                     if st.button("Submit"):
                         if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
                             with st.spinner(text="In progress..."):
@@ -568,7 +576,7 @@ def main():
                                         "content": keywordPlannerInputTemplate
                                         },
                                     ],
-                                    temperature=0.1,
+                                    temperature=int(temperature),
                                     
                                     )
                                 st.write(response.choices[0].message.content)
