@@ -1,7 +1,8 @@
-mp
+
 
 import time
 import math
+import json
 import openai
 import pybase64
 import pandas as pd
@@ -107,73 +108,157 @@ def _map_locations_ids_to_resource_names(client, location_ids):
     ).geo_target_constant_path
     return [build_resource_name(location_id) for location_id in location_ids]
 
-def generate_keyword_ideas(client,customer_id,location_ids, language_id, ad_groups):
+def generate_keyword_ideas(client,customer_id,location_ids, language_id, ad_groups,use_rivals,user_api_key):
 
+    #use_rivals is True for comepetitors and False for without rivals
 
     web_links = []
     list_keywords = []
+    keywords_arr = []
 
-    for i in ad_groups:
-        search_results = search(i, num_results=1)
-        for j in search_results:
-            web_links.append(j)
+    if 'ai_result' not in st.session_state:
+        st.session_state.ai_result = ""
 
-    for link in web_links:
-        content = get_keyword_data(
-            client,
-            customer_id,
-            location_ids,
-            language_id,
-            [],
-            link
-        )
+    # not using rivals and not given user_api_key
+    if not use_rivals and st.session_state.user_api_key == "":
+        st.session_state.user_api_key = st.text_input(
+        label="#### Your OpenAI API key :old_key:",
+        placeholder="Paste your openAI API key, sk-",
+        type="password",
+        key="key7")
+
+    if st.session_state.ai_result  == "" and use_rivals:
+        for i in ad_groups:
+            search_results = search(i, num_results=1)
+            for j in search_results:
+                web_links.append(j)
+
+        for link in web_links:
+            content = get_keyword_data(
+                client,
+                customer_id,
+                location_ids,
+                language_id,
+                [],
+                link
+            )
         time.sleep(wait_time_to_hit_google)
         for x in range(len(content)):
             list_keywords.append(content[x])
-
-    list_to_excel = []
-    for x in range(len(list_keywords)):
-        list_months = []
-        list_searches = []
-        list_annotations = []
-        months = [
-            "January", "February", "March", "April", "May", "June", "July",
-            "August", "September", "October", "November", "December"
-        ]
-        for y in list_keywords[x].keyword_idea_metrics.monthly_search_volumes:
-            month_num = y.month - 1 if (y.month - 1) < 12 else 0
-            month_year = str(y.year) if (y.month - 1) < 12 else str(y.year+1)
-            list_months.append(str(months[month_num]) + " - " + month_year)
-            list_searches.append(y.monthly_searches)
-
-        for y in list_keywords[x].keyword_annotations.concepts:
-            list_annotations.append(y.concept_group.name)
-
-        competition_index = int(list_keywords[x].keyword_idea_metrics.competition_index)
-        competition_value = ""
-
-        if competition_index >= 0 and competition_index <= 33:
-            competition_value = "LOW"
-        elif competition_index >= 34 and competition_index <= 66:
-            competition_value = "MEDIUM"
-        elif competition_index >= 67 and competition_index <= 100:
-            competition_value = "HIGH"
-
-        low_bid = (
-            Decimal(list_keywords[x].keyword_idea_metrics.low_top_of_page_bid_micros)
-            / Decimal(math.pow(10, decimal_bid_conversion))
-        )
-        high_bid = (
-            Decimal(list_keywords[x].keyword_idea_metrics.high_top_of_page_bid_micros)
-            / Decimal(math.pow(10, decimal_bid_conversion))
-        )
+    elif st.session_state.ai_result  == "" and st.session_state.user_api_key != "":
+        # create list of sample keywords per ad group using AI then feed it to keyword planner
+        system_ai_prompt = """
+            You will be provided with an array of ad groups, and your task is to predict the 10 most suitable keywords per ad group for creating an effective ad campaign.
+            
+            Retun output as a dictionary given below
+            [   
+                {     
+                    "keywords": ["Keyword 1", "Keyword 2", ..., "Keyword 10"]
+                },
+                {
+                    "keywords": ["Keyword 1", "Keyword 2", ..., "Keyword 10"]
+                },
+            ...
+            ]"""
+        assistant_ai_prompt = "To predict the 10 most suitable keywords per ad group, we need some information about the ad groups and their intended goals. Are there any specific themes or topics for each ad group? Additionally, do you have any criteria or preferences for the keywords, such as target audience, location, or industry?"
+        user_ai_prompt = f"{ad_groups}"
+        openai.api_key = st.session_state.user_api_key
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                "role": "system",
+                "content": system_ai_prompt
+                },
+                {
+                "role": "assistant",
+                "content": assistant_ai_prompt
+                },
+                {
+                "role": "user",
+                "content": user_ai_prompt
+                },
+            ],
+            temperature=1,
+            )
+        st.session_state.ai_result = response.choices[0].message.content  # call the AI API
 
         
-        list_to_excel.append([
-            (list_keywords[x].text), (list_keywords[x].keyword_idea_metrics.avg_monthly_searches),
-            (competition_value), (list_keywords[x].keyword_idea_metrics.competition_index),
-            (low_bid), (high_bid), (list_searches), (list_months), (list_annotations)
-        ])
+    if st.session_state.ai_result != "":
+        st.write(st.session_state.ai_result)
+
+        
+
+    if st.session_state.ai_result  != "":
+        for x in range(len(ad_groups)):
+            inner_keywords_text = st.text_input(f"**Use above as reference enter keyword for ad group {x+1} separated by , :**")
+            if(type(inner_keywords_text) == str):
+                result = inner_keywords_text.split(",")
+                result = [s.strip() for s in result]
+                keywords_arr.append(result)
+    
+    if len(keywords_arr) == len(ad_groups) and st.button("Submit Keywords"):
+        for keyword_inner_arr in keywords_arr:
+            content = get_keyword_data(
+                client,
+                customer_id,
+                location_ids,
+                language_id,
+                keyword_inner_arr,
+                ""
+            )
+            time.sleep(wait_time_to_hit_google)
+            for x in range(len(content)):
+                list_keywords.append(content[x])
+
+
+    list_to_excel = []
+
+    with st.empty():
+        for x in range(len(list_keywords)):
+            list_months = []
+            list_searches = []
+            list_annotations = []
+            months = [
+                "January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December"
+            ]
+            for y in list_keywords[x].keyword_idea_metrics.monthly_search_volumes:
+                month_num = y.month - 1 if (y.month - 1) < 12 else 0
+                month_year = str(y.year) if (y.month - 1) < 12 else str(y.year+1)
+                list_months.append(str(months[month_num]) + " - " + month_year)
+                list_searches.append(y.monthly_searches)
+
+            for y in list_keywords[x].keyword_annotations.concepts:
+                list_annotations.append(y.concept_group.name)
+
+            competition_index = int(list_keywords[x].keyword_idea_metrics.competition_index)
+            competition_value = ""
+
+            if competition_index >= 0 and competition_index <= 33:
+                competition_value = "LOW"
+            elif competition_index >= 34 and competition_index <= 66:
+                competition_value = "MEDIUM"
+            elif competition_index >= 67 and competition_index <= 100:
+                competition_value = "HIGH"
+
+            low_bid = (
+                Decimal(list_keywords[x].keyword_idea_metrics.low_top_of_page_bid_micros)
+                / Decimal(math.pow(10, decimal_bid_conversion))
+            )
+            high_bid = (
+                Decimal(list_keywords[x].keyword_idea_metrics.high_top_of_page_bid_micros)
+                / Decimal(math.pow(10, decimal_bid_conversion))
+            )
+
+            
+            list_to_excel.append([
+                (list_keywords[x].text), (list_keywords[x].keyword_idea_metrics.avg_monthly_searches),
+                (competition_value), (list_keywords[x].keyword_idea_metrics.competition_index),
+                (low_bid), (high_bid), (list_searches), (list_months), (list_annotations)
+            ])
+
+            st.write(f"😃 Got {len(list_to_excel)} Keywords")
 
     return list_to_excel
 
@@ -237,31 +322,43 @@ def prioritize_keywords(keywords_data,average_searches:int):
 
 def main():
 
-    # Step 1: Initial UI - Choose between AI-generated ad word ideas or user-provided ad groups
-    st.title("Keyword Analysis")
-    option = st.radio("#### Select an option:", ("Generate ad group ideas using AI", "Use your own ad group ideas", "Generate Keyword Report"))
-
-    user_api_key = ""
+    # Initialize OPENAI API KEY state variables
+    if 'user_api_key' not in st.session_state:
+        st.session_state.user_api_key = ""
 
     # Initialize session state variables
     if 'ad_group_ai_result' not in st.session_state:
         st.session_state.ad_group_ai_result = ""
 
+    # Initialize Sidebar toggling state variable
     if 'show_sidebar' not in st.session_state:
         st.session_state.show_sidebar = False
 
+
+
+    # Step 1: Initial UI - Choose between AI-generated ad word ideas or user-provided ad groups
+    st.title(":pencil: Keyword Analysis :pencil:")
+    option = st.radio("#### Select an option:", ("Generate ad group ideas using AI", "Use your own ad group ideas", "Generate Keyword Report"))
+
+    # Step 2: If Option is "Generate ad group ideas using AI"
     if option == "Generate ad group ideas using AI":
-        # user_api_key
-        user_api_key = st.text_input(
-        label="#### Your OpenAI API key 👇",
+        
+        # Take user api key as input
+        st.session_state.user_api_key = st.text_input(
+        key="key1",
+        label="#### Your OpenAI API key :old_key:",
         placeholder="Paste your openAI API key, sk-",
         type="password")
         
-        ai_prompt = st.text_area("#### Enter AI prompt to generate ad group ideas:")
-        if st.button("Submit AI Prompt"):
+        # Take prompt to generate ad group ideas
+        ai_prompt = st.text_area("#### Enter AI prompt to generate ad group ideas:",key="key2")
+
+        # button to submit given prompt
+        if len(ai_prompt) != 0 and st.button("Submit AI Prompt"):
+            
             # Call the AI API with the provided prompt and display the result
             if ai_prompt.strip() != "":
-                openai.api_key = user_api_key
+                openai.api_key = st.session_state.user_api_key
                 response = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo-16k",
                     messages=[
@@ -270,19 +367,27 @@ def main():
                         "content": ai_prompt
                         },
                     ],
-                    temperature=0.1,
+                    temperature=1,
                     
                     )
                 ai_result = response.choices[0].message.content  # call the AI API
                 st.session_state.ad_group_ai_result = ai_result
                 st.session_state.show_sidebar = True
     
+    # Step 3: If Option is "Use your own ad group ideas"
     elif option == "Use your own ad group ideas":
+
+        # toggle show sidebar state variable value
         st.session_state.show_sidebar = True
+
+    # Step 4: If Option is Generate Keyword Report
     elif option == "Generate Keyword Report":
+
+        # Call function to generate performance report
         generate_performance_report()
 
-
+    
+    # If Show Sidebar is TRUE
     if st.session_state.show_sidebar:
 
         if st.session_state.ad_group_ai_result != "":
@@ -309,6 +414,9 @@ def main():
         # Generated Keyword Data Sheet
         list_to_excel = []
 
+        # Boolean for toggling sample_keyword_option
+        sample_keyword_option = False
+
         # Client Instance
         client = GoogleAdsClient.load_from_storage("./keyword-planner.yaml")
 
@@ -319,7 +427,7 @@ def main():
         language_names = tuple(item['Language name'] + " (" + (item['Language code']) + ")"  for item in language_excel_dict)
 
         selected_language = st.sidebar.selectbox(
-        key="lang_id",
+        key="key3",
         label='#### Language 👇',
         help="#### Refer Here -> https://developers.google.com/google-ads/api/data/codes-formats#languages",
         options=language_names,
@@ -334,34 +442,41 @@ def main():
 
         # Take number of locations 
         st.sidebar.write("#### Enter the number of locations 👇")
-        num_of_location_ids = st.sidebar.number_input("Enter number of location", min_value=0,max_value=5, step=1, value=0)
+        num_of_location_ids = st.sidebar.number_input("Enter number of location", min_value=0,max_value=5, step=1, value=0,key="key4")
 
         # Take num_of_location_ids number of locations as input
         for i in range(num_of_location_ids):
             selected_location = st.sidebar.selectbox(
-            key=f"location_id {i+1}",
+            key=f"location_id {i+5}",
             label=f"Location {i+1}",
             help="#### Refer Here -> https://developers.google.com/google-ads/api/reference/data/geotargets",
             options=location_names,
-            index=20867)
+            index=31022)
             default_location_ids.append(location_excel_dict[location_names.index(selected_location)]['Criteria ID'])
 
 
         # Input number of Ad Groups
         if len(default_location_ids) != 0:
             st.write("#### Enter the number of ad groups:")
-            num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0)
+            num_ad_groups = st.number_input("Number of Ad Groups", min_value=0, step=1, value=0,key="key5")
         
         # Enter num_ad_groups number of ad group
         for i in range(num_ad_groups):
-            ad_group = st.text_input(f"Ad Group {i+1}")
+            ad_group = st.text_input(f"Ad Group {i+1}",key=f"Ad Group {i+1}")
             if len(ad_group) != 0:
                 ad_groups.append(ad_group)
 
-        # Generate Keyword file in list format
-        if len(ad_groups) != 0 and st.button("Generate Keyword Ideas"):
-            list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups)
+        if len(ad_groups) != 0:
+            sample_keyword_option = st.radio("#### Generate Keywords Using", ("Rivals & Keyword Planner" , "AI & Keyword Planner"))
 
+        # Generate Keyword file in list format
+        if len(ad_groups) != 0 and sample_keyword_option == "Rivals & Keyword Planner" and st.button("Generate Keyword Ideas"):
+            # For Competitors
+            list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups,True,st.session_state.user_api_key)
+        elif sample_keyword_option == "AI & Keyword Planner":
+            # For AI
+            list_to_excel = generate_keyword_ideas(client,default_customer_id,default_location_ids,default_language_id,ad_groups,False,st.session_state.user_api_key)
+            
         # Generate excel sheet dataframe
         if len(list_to_excel) > 0:
             df = pd.DataFrame(
@@ -378,7 +493,7 @@ def main():
                 
                 # filter by average searches
                 default_average_search = st.number_input(
-                key="avg_search",
+                key="key8",
                 label="#### Filter by Average Searches 👇",
                 value=default_average_search)
                 
@@ -419,18 +534,19 @@ def main():
                 )
 
                 # user_api_key
-                if user_api_key == "":
-                    user_api_key = st.text_input(
-                    label="#### Your OpenAI API key 👇",
+                if st.session_state.user_api_key == "":
+                    st.session_state.user_api_key = st.text_input(
+                    label="#### Your OpenAI API key :old_key:",
                     placeholder="Paste your openAI API key, sk-",
-                    type="password")
+                    type="password",
+                    key="key9")
 
-                if user_api_key != "":
+                if st.session_state.user_api_key != "":
 
                     # Prompt
                     keywordPlanningPromptTemplate = keywordPlanner(1)
 
-                    keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400)
+                    keywordPlanningPromptTemplate = st.text_area(label="#### Modify Keyword Planning Prompt",value=keywordPlanningPromptTemplate,height=400,key="key10")
 
                     excel_sheet_dataframe_list = [excel_sheet_dataframe.columns.values.tolist()] + excel_sheet_dataframe.values.tolist()
 
@@ -439,7 +555,7 @@ def main():
                     if st.button("Submit"):
                         if (ad_groups is not None) and (ad_groups != "" or len(ad_groups) > 0):
                             with st.spinner(text="In progress..."):
-                                openai.api_key = user_api_key
+                                openai.api_key = st.session_state.user_api_key
                                 response = openai.ChatCompletion.create(
                                     model="gpt-3.5-turbo-16k",
                                     messages=[
